@@ -83,17 +83,19 @@ statefulset.apps/csi-rbdplugin-attacher         1         1         1d
 statefulset.apps/csi-rbdplugin-provisioner      1         1         1d
 ```
 
-## Test the CSI driver
+# Test CEPHFS and RBD CSI drivers
 
 Once the plugin is successfully deployed, test it by running the following example.
 
-### Create the StorageClass
+## RBD CSI Driver
+
+### Create RBD StorageClass
 
 This [storageclass](../cluster/examples/kubernetes/ceph/csi/example/rbd/storageclass.yaml) expect a pool named `rbd` in your Ceph cluster. You can create this pool using [rook pool CRD](https://github.com/rook/rook/blob/master/Documentation/ceph-pool-crd.md).
 
 Please update `monitors` to reflect the Ceph monitors.
 
-### Create the Secret
+### Create RBD Secret
 
 Create a Secret that matches that specified in the [storageclass](../cluster/examples/kubernetes/ceph/csi/example/rbd/storageclass.yaml).
 
@@ -102,10 +104,12 @@ Find a Ceph mon pod (in the following example, the pod is
 `kubernetes`:
 
 ```bash
-kubectl exec -ti -n rook-ceph rook-ceph-mon-a-6c4f9f6b6-rzp6r -- bash -c "ceph -c /var/lib/rook/rook-ceph/rook-ceph.config auth get-or-create-key client.kub2 mon \"allow profile rbd\" osd \"profile rbd pool=rbd\""
+kubectl exec -ti -n rook-ceph rook-ceph-mon-a-6c4f9f6b6-rzp6r -- bash -c "ceph -c /var/lib/rook/rook-ceph/rook-ceph.config auth get-or-create-key client.kubernetes mon \"allow profile rbd\" osd \"profile rbd pool=rbd\""
 ```
 
 Then create a Secret using admin and `kubernetes` keyrings:
+
+### rbd-secret.yaml
 
 ```yaml
 apiVersion: v1
@@ -125,9 +129,9 @@ data:
 
 Here, you need your Ceph admin/user password encoded in base64. Run `ceph auth ls` in one of your Ceph pod, encode the key of your admin/user and replace `BASE64-ENCODED-PASSWORD` by your encoded key.
 
-### Create the PersistentVolumeClaim
+### Create RBD PersistentVolumeClaim
 
-#### pvc.yaml
+#### rbd-pvc.yaml
 
 ```yaml
 apiVersion: v1
@@ -145,7 +149,7 @@ spec:
 
 Make sure your `storageClassName` is the name of the StorageClass previously defined in storageclass.yaml
 
-### Verify the PVC has successfully been created
+### Verify RBD PVC has successfully been created
 
 ```yaml
 # kubectl get pvc
@@ -155,9 +159,9 @@ rbd-pvc   Bound    pvc-c20495c0d5de11e8   1Gi        RWO            csi-rbd     
 
 If your PVC status isn't `Bound`, check the csi-rbdplugin logs to see what's preventing the PVC from being up and bound.
 
-### Create the demo Pod
+### Create RBD demo Pod
 
-#### pod.yaml
+#### rbd-pod.yaml
 
 ```yaml
 apiVersion: v1
@@ -187,13 +191,13 @@ pvc-c20495c0d5de11e8
 
 # Additional features
 
-## Snapshots
+## RBD Snapshots
 
 This example is based on [kubernetes-csi/external-snapshotter](https://github.com/kubernetes-csi/external-snapshotter), with a few tweaks to make it work along ceph-csi RBD plugin. This is a basic example of the kubernetes snapshot feature. For more information and functionalities please refer to the [volume snapshot documentation](https://kubernetes.io/docs/concepts/storage/volume-snapshots/).
 
 Since this feature is still in [alpha stage](https://kubernetes.io/blog/2018/10/09/introducing-volume-snapshot-alpha-for-kubernetes/) (k8s 1.12+), make sure to enable `VolumeSnapshotDataSource` feature gate in your Kubernetes cluster.
 
-### Enable csi-snapshotter
+### Enable RBD csi-snapshotter
 
 First, create RBAC rules to authorize the snapshotter to access the needed resources
 
@@ -209,7 +213,7 @@ If you followed this guide without changing anything, this file should be left a
 kubectl create -f  https://raw.githubusercontent.com/ceph/ceph-csi/master/examples/rbd/csi-snapshotter.yaml
 ```
 
-### Test csi-snapshotter
+### Test RBD csi-snapshotter
 
 Next you need to create the SnapshotClass. The purpose of a SnapshotClass is defined in [the kubernetes documentation](https://kubernetes.io/docs/concepts/storage/volume-snapshot-classes/). In short, as the documentation describes it:
 > Just like StorageClass provides a way for administrators to describe the “classes” of storage they offer when provisioning a volume, VolumeSnapshotClass provides a way to describe the “classes” of storage when provisioning a volume snapshot.
@@ -232,7 +236,7 @@ Finally, create the VolumeSnapshot resource. its `snapshotClassName` should be t
 kubectl create -f https://raw.githubusercontent.com/ceph/ceph-csi/master/examples/rbd/snapshot.yaml
 ```
 
-### Verify the Snapshot has successfully been created
+### Verify RBD Snapshot has successfully been created
 
 ```bash
 # kubectl get volumesnapshotclass
@@ -252,15 +256,15 @@ SNAPID NAME                                                                     
      4 csi-rbd-pvc-c20495c0d5de11e8-snap-4c0b455b-d5fe-11e8-bebb-525400123456 1024 MB Mon Oct 22 13:28:03 2018
 ```
 
-## Cleanup
+## RBD resource Cleanup
 
 To clean your cluster of the resources created by this example, run the following:
 
 ```console
-kubectl delete -f pod.yaml
-kubectl delete -f pvc.yaml
-kubectl delete -f secret.yaml
-kubectl delete -f storageclass.yaml
+kubectl delete -f rbd-pod.yaml
+kubectl delete -f rbd-pvc.yaml
+kubectl delete -f rbd-secret.yaml
+kubectl delete -f rbd-storageclass.yaml
 ```
 
 If you tested snapshots too:
@@ -270,4 +274,114 @@ kubectl delete -f https://raw.githubusercontent.com/ceph/ceph-csi/master/example
 kubectl delete -f snapshotclass.yaml
 kubectl delete -f https://raw.githubusercontent.com/ceph/ceph-csi/master/examples/rbd/csi-snapshotter.yaml
 kubectl delete -f https://raw.githubusercontent.com/ceph/ceph-csi/master/examples/rbd/csi-snapshotter-rbac.yaml
+```
+
+## CEPHFS CSI Driver
+
+### Create CEPHFS StorageClass
+
+This [storageclass](../cluster/examples/kubernetes/ceph/csi/example/cephfs/storageclass.yaml) expect a pool named `cephfs_data` in your Ceph cluster. You can create this pool using [rook file-system CRD](https://github.com/rook/rook/blob/master/Documentation/ceph-filesystem-crd.md).
+
+Please update `monitors` to reflect the Ceph monitors.
+
+### Create CEPHFS Secret
+
+Create a Secret that matches that specified in the [storageclass](../cluster/examples/kubernetes/ceph/csi/example/rbd/storageclass.yaml).
+
+Find a Ceph mon pod (in the following example, the pod is
+`rook-ceph-mon-a-6c4f9f6b6-rzp6r`) and create a Ceph user for that pool called
+`kubernetes`:
+
+```bash
+kubectl exec -ti -n rook-ceph rook-ceph-mon-a-6c4f9f6b6-rzp6r -- bash -c "ceph -c /var/lib/rook/rook-ceph/rook-ceph.config auth get-or-create-key client.kubernetes mds \" allow rw\" mon \"allow r\" osd \"allow rw pool=cephfs_data\""
+```
+
+Then create a Secret using admin and `kubernetes` keyrings:
+
+#### cephfs-secret.yaml
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: csi-cephfs-secret
+  namespace: default
+data:
+  # Required if provisionVolume is set to false
+  userID: BASE64-ENCODED-USER
+  userKey: BASE64-ENCODED-PASSWORD
+
+  # Required if provisionVolume is set to true
+  adminID: BASE64-ENCODED-USER
+  adminKey: BASE64-ENCODED-PASSWORD
+```
+
+Here, you need your Ceph admin/user name and password encoded in base64.
+Encode admin/user name in base64 format and replace `BASE64-ENCODED-USER` and
+Run `ceph auth ls` in one of your Ceph pod, encode the key of your admin/user and replace `BASE64-ENCODED-PASSWORD` by your encoded key.
+
+### Create CEPHFS PersistentVolumeClaim
+
+#### cephfs-pvc.yaml
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cephfs-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: csi-cephfs
+```
+
+Make sure your `storageClassName` is the name of the StorageClass previously defined in storageclass.yaml
+
+### Verify CEPHFS PVC has successfully been created
+
+```bash
+# kubectl get pvc
+NAME          STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+cephfs-pvc   Bound    pvc-6bc76846-3a4a-11e9-971d-525400c2d871   1Gi        RWO            csi-cephfs     25s
+
+```
+
+If your PVC status isn't `Bound`, check the csi-cephfsplugin logs to see what's
+preventing the PVC from being up and bound.
+
+### Create CEPHFS demo Pod
+
+#### cephfs-pod.yaml
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: csicephfs-demo-pod
+spec:
+  containers:
+   - name: web-server
+     image: nginx
+     volumeMounts:
+       - name: mypvc
+         mountPath: /var/lib/www/html
+  volumes:
+   - name: mypvc
+     persistentVolumeClaim:
+       claimName: cephfs-pvc
+       readOnly: false
+```
+
+## CEPHFS resource Cleanup
+
+To clean your cluster of the resources created by this example, run the following:
+
+```console
+kubectl delete -f cephfs-pod.yaml
+kubectl delete -f cephfs-pvc.yaml
+kubectl delete -f cephfs-secret.yaml
+kubectl delete -f cephfs-storageclass.yaml
 ```
