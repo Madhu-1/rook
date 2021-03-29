@@ -403,7 +403,7 @@ rules:
     verbs: ["update", "patch"]
   - apiGroups: [""]
     resources: ["configmaps"]
-    verbs: ["get"]
+    verbs: ["get", "list", "watch", "update"]
 {{- end }}
 {{- if .Values.pspEnable }}
 ---

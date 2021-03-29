@@ -165,6 +165,10 @@ const (
 	// driver deployment names
 	csiRBDProvisioner    = "csi-rbdplugin-provisioner"
 	csiCephFSProvisioner = "csi-cephfsplugin-provisioner"
+
+	// volumeID mapping configmap name
+	csiVolumeIDMappingConfigMapName = "ceph-csi-volumeid-mapping"
+	csiVolumeIDMappingConfigMapKey  = "mapping.json"
 )
 
 func CSIEnabled() bool {
@@ -433,6 +437,25 @@ func startDrivers(clientset kubernetes.Interface, rookclientset rookclient.Inter
 	}
 
 	if rbdProvisionerDeployment != nil {
+		volumeIDMappingconfigMap := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      csiVolumeIDMappingConfigMapName,
+				Namespace: namespace,
+			},
+		}
+		volumeIDMappingconfigMap.Data = map[string]string{
+			csiVolumeIDMappingConfigMapKey: "[]",
+		}
+
+		err = ownerInfo.SetControllerReference(volumeIDMappingconfigMap)
+		if err != nil {
+			return errors.Wrapf(err, "failed to set owner reference to volumeID mapping configmap %q", csiVolumeIDMappingConfigMapName)
+		}
+		_, err := clientset.CoreV1().ConfigMaps(namespace).Create(ctx, volumeIDMappingconfigMap, metav1.CreateOptions{})
+		// no need to update if the configmap already exists.
+		if err != nil && !apierrors.IsAlreadyExists(err) {
+			return errors.Wrapf(err, "failed to create volumeID mapping %q (in %q)", volumeIDMappingconfigMap.Name, volumeIDMappingconfigMap.Namespace)
+		}
 		applyToPodSpec(&rbdProvisionerDeployment.Spec.Template.Spec, provisionerNodeAffinity, provisionerTolerations)
 		// apply resource request and limit to rbd provisioner containers
 		applyResourcesToContainers(clientset, rbdProvisionerResource, &rbdProvisionerDeployment.Spec.Template.Spec)
