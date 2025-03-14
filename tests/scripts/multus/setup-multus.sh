@@ -31,6 +31,8 @@ retry() {
 
 echo "#### set up multus ####"
 
+kubectl create ns rook-ceph
+
 echo " ## wait for coreDNS"
 kubectl -n kube-system wait --for=condition=available deploy/coredns --timeout=$TIMEOUT_K8
 

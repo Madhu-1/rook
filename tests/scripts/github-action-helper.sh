@@ -250,7 +250,7 @@ function validate_yaml() {
 
 function create_cluster_prerequisites() {
   # this might be called from another function that has already done a cd
-  (cd "${REPO_DIR}/deploy/examples" && kubectl create -f crds.yaml -f common.yaml -f csi/nfs/rbac.yaml)
+  (cd "${REPO_DIR}/deploy/examples" && kubectl apply -f crds.yaml -f common.yaml -f csi/nfs/rbac.yaml)
 }
 
 function deploy_manifest_with_local_build() {
@@ -479,20 +479,42 @@ function deploy_first_rook_cluster() {
   yq w -i -d0 cluster-multus-test.yaml spec.dashboard.enabled false
   yq w -i -d0 cluster-multus-test.yaml spec.storage.useAllDevices false
   yq w -i -d0 cluster-multus-test.yaml spec.storage.deviceFilter "${DEVICE_NAME}"1
-  kubectl create -f cluster-test.yaml
+  kubectl create -f cluster-multus-test.yaml
   deploy_toolbox
 }
 
 function deploy_second_rook_cluster() {
   DEVICE_NAME="$(tests/scripts/github-action-helper.sh find_extra_block_dev)"
   cd "${REPO_DIR}/deploy/examples"
-  NAMESPACE=rook-ceph-secondary envsubst <common-second-cluster.yaml | kubectl create -f -
+  NAMESPACE=rook-ceph-secondary envsubst <common-second-cluster.yaml | kubectl apply -f -
   sed -i 's/namespace: rook-ceph/namespace: rook-ceph-secondary/g' cluster-multus-test.yaml
   yq w -i -d0 cluster-multus-test.yaml spec.storage.deviceFilter "${DEVICE_NAME}"2
   yq w -i -d0 cluster-multus-test.yaml spec.dataDirHostPath "/var/lib/rook-external"
   kubectl create -f cluster-multus-test.yaml
   yq w -i toolbox.yaml metadata.namespace rook-ceph-secondary
   deploy_toolbox
+  wait_for_ceph_health "rook-ceph-secondary" "rook-ceph"
+}
+
+wait_for_ceph_cluster_status() {
+  local namespace1="$1"
+  echo "Waiting for ceph cluster to enter HEALTH_OK"
+  WAIT_CEPH_CLUSTER_RUNNING=20
+  while ! kubectl get cephclusters.ceph.rook.io -n "$namespace1" -o jsonpath='{.items[?(@.kind == "CephCluster")].status.ceph.health}' | grep -q "HEALTH_OK"; do
+    echo "Waiting for Ceph cluster to enter HEALTH_OK"
+    kubectl get cephcluster -A
+    kubectl get po -n$namespace1
+    kubectl get po -n$namespace2
+    sleep ${WAIT_CEPH_CLUSTER_RUNNING}
+  done
+  echo "Ceph cluster installed and running"
+}
+# Function to wait until both Ceph clusters in different namespaces are in HEALTH_OK state
+wait_for_ceph_health() {
+  local namespace1="$1"
+  local namespace2="$2"
+  wait_for_ceph_cluster_status $namespace1
+  wait_for_ceph_cluster_status $namespace2
 }
 
 function wait_for() {
