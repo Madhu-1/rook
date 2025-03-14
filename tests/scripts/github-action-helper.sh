@@ -475,9 +475,10 @@ function deploy_first_rook_cluster() {
   cd "${REPO_DIR}/deploy/examples"
 
   deploy_manifest_with_local_build operator.yaml
-  yq w -i -d0 cluster-test.yaml spec.dashboard.enabled false
-  yq w -i -d0 cluster-test.yaml spec.storage.useAllDevices false
-  yq w -i -d0 cluster-test.yaml spec.storage.deviceFilter "${DEVICE_NAME}"1
+
+  yq w -i -d0 cluster-multus-test.yaml spec.dashboard.enabled false
+  yq w -i -d0 cluster-multus-test.yaml spec.storage.useAllDevices false
+  yq w -i -d0 cluster-multus-test.yaml spec.storage.deviceFilter "${DEVICE_NAME}"1
   kubectl create -f cluster-test.yaml
   deploy_toolbox
 }
@@ -486,10 +487,10 @@ function deploy_second_rook_cluster() {
   DEVICE_NAME="$(tests/scripts/github-action-helper.sh find_extra_block_dev)"
   cd "${REPO_DIR}/deploy/examples"
   NAMESPACE=rook-ceph-secondary envsubst <common-second-cluster.yaml | kubectl create -f -
-  sed -i 's/namespace: rook-ceph/namespace: rook-ceph-secondary/g' cluster-test.yaml
-  yq w -i -d0 cluster-test.yaml spec.storage.deviceFilter "${DEVICE_NAME}"2
-  yq w -i -d0 cluster-test.yaml spec.dataDirHostPath "/var/lib/rook-external"
-  kubectl create -f cluster-test.yaml
+  sed -i 's/namespace: rook-ceph/namespace: rook-ceph-secondary/g' cluster-multus-test.yaml
+  yq w -i -d0 cluster-multus-test.yaml spec.storage.deviceFilter "${DEVICE_NAME}"2
+  yq w -i -d0 cluster-multus-test.yaml spec.dataDirHostPath "/var/lib/rook-external"
+  kubectl create -f cluster-multus-test.yaml
   yq w -i toolbox.yaml metadata.namespace rook-ceph-secondary
   deploy_toolbox
 }
