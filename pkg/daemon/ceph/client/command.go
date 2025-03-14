@@ -39,6 +39,7 @@ const (
 	CephTool = "ceph"
 	// RBDTool is the name of the CLI tool for 'rbd'
 	RBDTool = "rbd"
+	Tool    = "tool"
 	// RadosTool is the name of the CLI tool for 'rados'
 	RadosTool = "rados"
 	// Kubectl is the name of the CLI tool for 'kubectl'
@@ -166,6 +167,18 @@ func NewGaneshaRadosGraceCommand(context *clusterd.Context, clusterInfo *Cluster
 	return cmd
 }
 
+func NewCommand(context *clusterd.Context, clusterInfo *ClusterInfo, args []string) *CephToolCommand {
+	cmd := newCephToolCommand(Tool, context, clusterInfo, args)
+	cmd.JsonOutput = false
+
+	// When Multus is enabled, the rados tool should run inside the proxy container
+	if clusterInfo.NetworkSpec.IsMultus() {
+		cmd.RemoteExecution = true
+	}
+
+	return cmd
+}
+
 func (c *CephToolCommand) run() ([]byte, error) {
 	// Return if the context has been canceled
 	if c.clusterInfo.Context.Err() != nil {
@@ -195,6 +208,8 @@ func (c *CephToolCommand) run() ([]byte, error) {
 		switch c.tool {
 		case RBDTool, RadosTool, GaneshaRadosGraceTool:
 			// do not add format option
+		case Tool:
+			// do nothing
 		default:
 			args = append(args, "--format", "plain")
 		}
@@ -205,14 +220,19 @@ func (c *CephToolCommand) run() ([]byte, error) {
 
 	// NewRBDCommand does not use the --out-file option so we only check for remote execution here
 	// Still forcing the check for the command if the behavior changes in the future
-	if command == RBDTool || command == RadosTool || command == GaneshaRadosGraceTool {
+	if command == RBDTool || command == RadosTool || command == GaneshaRadosGraceTool || command == Tool {
 		if c.RemoteExecution {
-			output, stderr, err = c.context.RemoteExecutor.ExecCommandInContainerWithFullOutputWithTimeout(c.clusterInfo.Context, ProxyAppLabel, CommandProxyInitContainerName, c.clusterInfo.Namespace, append([]string{command}, args...)...)
+			if command == Tool {
+				output, stderr, err = c.context.RemoteExecutor.ExecCommandInContainerWithFullOutputWithTimeoutTool(c.clusterInfo.Context, ProxyAppLabel, CommandProxyInitContainerName, c.clusterInfo.Namespace, args...)
+
+			} else {
+				output, stderr, err = c.context.RemoteExecutor.ExecCommandInContainerWithFullOutputWithTimeout(c.clusterInfo.Context, ProxyAppLabel, CommandProxyInitContainerName, c.clusterInfo.Namespace, append([]string{command}, args...)...)
+			}
 			if err != nil {
 				err = errors.Errorf("%s", err.Error())
 			}
 			if stderr != "" {
-				err = errors.Errorf("%s", stderr)
+				err = errors.Errorf("error %s: stderr=%s", err, stderr)
 			}
 		} else if c.timeout == 0 {
 			output, err = c.context.Executor.ExecuteCommandWithOutput(command, args...)
